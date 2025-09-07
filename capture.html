@@ -1,0 +1,57 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>문제 화면</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; line-height:1.5}
+  button{padding:10px 16px; border:0; border-radius:10px; font-weight:700; background:#111; color:#fff; margin-top:8px}
+  .note{font-size:12px; opacity:.75}
+</style>
+
+<body>
+  <h2 id="title">문제</h2>
+  <div id="info" class="note">세션 확인 중…</div>
+  <button id="start" style="display:none">촬영/저장 시작</button>
+
+<script>
+// ★ Apps Script /exec 주소
+const SESSION_API = "https://script.google.com/macros/s/여기_exec_URL/exec";
+
+// URL 파라미터
+const qp = new URLSearchParams(location.search);
+const SID = qp.get('sid');
+const PROBLEM_ID = qp.get('problem') || 'unknown_problem';
+
+document.getElementById('title').textContent = `문제 · ${PROBLEM_ID}`;
+
+async function resolve(){
+  if (!SID){
+    document.getElementById('info').textContent = '세션이 없습니다. 홈에서 다시 시작해 주세요.';
+    return;
+  }
+  try{
+    const url = SESSION_API + '?action=resolve&sid=' + encodeURIComponent(SID);
+    const j = await fetch(url).then(r=>r.json());
+    if (!j.ok){
+      document.getElementById('info').textContent = '세션 만료/오류: 홈에서 세션을 다시 만드세요.';
+      return;
+    }
+    // 세션 OK → 반/아동 값을 확보
+    window.CLASS_ID = j.classId;
+    window.CHILD    = j.child;
+    document.getElementById('info').textContent =
+      `반: ${CLASS_ID} / 아동: ${CHILD || '(미입력)'} / 문제: ${PROBLEM_ID}`;
+    document.getElementById('start').style.display = 'inline-block';
+  }catch(e){
+    document.getElementById('info').textContent = '네트워크 오류: ' + e;
+  }
+}
+resolve();
+
+// ★여기서부터 기존 로직(촬영/업로드·STT 등)을 실행하세요
+document.getElementById('start').onclick = async ()=>{
+  alert(`[샘플] 여기서 촬영/업로드를 실행합니다.\n반=${window.CLASS_ID}\n아동=${window.CHILD}\n문제=${PROBLEM_ID}`);
+  // 예: Firebase/Apps Script 업로드 시 메타데이터에
+  // classId=window.CLASS_ID, child=window.CHILD, problemId=PROBLEM_ID 를 포함
+};
+</script>
+</body>
