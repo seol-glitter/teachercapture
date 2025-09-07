@@ -1,0 +1,90 @@
+<!doctype html>
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>문제 화면</title>
+<style>
+  body{font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif; padding:16px; line-height:1.5}
+  select, input, button{padding:10px; border:1px solid #ddd; border-radius:10px}
+  button{background:#111; color:#fff; font-weight:700}
+  .note{font-size:12px; opacity:.75}
+</style>
+
+<body>
+  <h2 id="title">문제</h2>
+  <div id="info" class="note">세션 확인 중…</div>
+
+  <div id="chooseBox" style="display:none; margin:12px 0">
+    <div>내 이름을 골라요</div>
+    <select id="childSelect"></select>
+    <button id="chooseBtn" style="margin-left:8px">선택 완료</button>
+  </div>
+
+  <div id="readyBox" style="display:none; margin-top:12px">
+    <div class="note" id="selInfo"></div>
+    <button id="start">촬영/저장 시작</button>
+  </div>
+
+<script>
+// ★ Apps Script /exec
+const SESSION_API = "https://script.google.com/macros/s/AKfycbwxQdrD9d358f1OWhIzC54f4pnCArgmNqx4LQqBpsYDlUnRAJU_A5hqdVZnnO5tIhHcOA/exec";
+
+// JSONP 유틸
+function jsonp(url){
+  return new Promise((resolve, reject)=>{
+    const cb = 'cb_' + Date.now().toString(36) + Math.random().toString(36).slice(2);
+    window[cb] = (data)=>{ resolve(data); cleanup(); };
+    function cleanup(){ try{ delete window[cb]; }catch(e){} if (s && s.parentNode) s.parentNode.removeChild(s); }
+    const s = document.createElement('script');
+    s.src = url + (url.includes('?') ? '&' : '?') + 'callback=' + cb;
+    s.onerror = ()=>{ cleanup(); reject(new Error('JSONP failed')); };
+    document.body.appendChild(s);
+  });
+}
+
+// URL 파라미터
+const qp         = new URLSearchParams(location.search);
+const SID        = qp.get('sid');
+const PROBLEM_ID = qp.get('problem') || 'unknown_problem';
+document.getElementById('title').textContent = `문제 · ${PROBLEM_ID}`;
+
+const info       = document.getElementById('info');
+const chooseBox  = document.getElementById('chooseBox');
+const childSel   = document.getElementById('childSelect');
+const chooseBtn  = document.getElementById('chooseBtn');
+const readyBox   = document.getElementById('readyBox');
+const selInfo    = document.getElementById('selInfo');
+
+let CLASS_ID = '', CHILD = '', ROSTER = [];
+
+async function resolve(){
+  if (!SID){ info.textContent = '세션이 없습니다. 홈에서 다시 시작해 주세요.'; return; }
+  try{
+    const qs = new URLSearchParams({ action:'resolve', sid:SID }).toString();
+    const j  = await jsonp(`${SESSION_API}?${qs}`);
+    if (!j.ok){ info.textContent = '세션 만료/오류: 홈에서 세션을 다시 만드세요.'; return; }
+
+    CLASS_ID = j.classId || 'unknown_class';
+    ROSTER   = Array.isArray(j.roster) ? j.roster : [];
+    CHILD    = (j.child || '').trim();
+
+    if (ROSTER.length > 0){
+      childSel.innerHTML = ROSTER.map(n=>`<option value="${n}">${n}</option>`).join('');
+      if (CHILD && ROSTER.includes(CHILD)) childSel.value = CHILD;
+      chooseBox.style.display = 'block';
+      info.textContent = `반: ${CLASS_ID} / 문제: ${PROBLEM_ID} — 이름을 선택해 주세요.`;
+    } else {
+      selInfo.textContent = `반: ${CLASS_ID} / 아동: ${CHILD || '(미입력)'} / 문제: ${PROBLEM_ID}`;
+      readyBox.style.display = 'block';
+      info.textContent = '';
+    }
+  }catch(e){
+    info.textContent = '네트워크 오류(JSONP): ' + e.message;
+  }
+}
+resolve();
+
+// 여기서 실제 촬영/업로드 로직 연결
+document.getElementById('start').onclick = ()=>{
+  alert(`[샘플] 촬영/업로드 시작\n반=${CLASS_ID}\n아동=${CHILD}\n문제=${PROBLEM_ID}`);
+};
+</script>
+</body>
