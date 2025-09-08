@@ -1,0 +1,113 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>문제 화면 · 불의 마법을 푸는 안전 열쇠</title>
+<style>
+  :root{ --bg-top:#cfe9fb; --bg-bottom:#ffffff; --ink:#0b2a4a; --accent:#0f2f57;
+         --pill:#0d2744; --card:#f6fbff; --line:#d7e7f5; }
+  html,body{height:100%}
+  body{margin:0; font-family:"Pretendard",system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;
+       color:var(--ink); background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom));}
+  .wrap{max-width:1024px; margin:0 auto; padding:18px 14px 40px}
+  .banner{display:block; width:100%; max-width:980px; margin:0 auto}
+  .sub{margin:12px auto 18px; display:inline-block; padding:10px 18px; border-radius:999px;
+       background:var(--pill); color:#fff; font-weight:800; letter-spacing:.4px; box-shadow:0 2px 0 rgba(0,0,0,.2)}
+  .box{background:var(--card); border:1px solid var(--line); border-radius:20px; padding:16px; box-shadow:0 8px 30px rgba(13,39,68,.06)}
+  .note{font-size:12px; opacity:.75}
+  select, button{padding:12px 14px; border-radius:14px; border:1px solid var(--line); font-size:16px}
+  button{background:var(--accent); color:#fff; font-weight:800; border:none; cursor:pointer;
+         box-shadow:0 6px 14px rgba(15,47,87,.18)}
+</style>
+
+<body>
+  <div class="wrap">
+    <img class="banner" src="https://seol-glitter.github.io/teacherhome/banner.png" alt="불의 마법을 푸는 안전 열쇠 배너">
+    <div class="sub" id="title">문제</div>
+
+    <section class="box">
+      <div id="info" class="note">세션 확인 중…</div>
+
+      <div id="chooseBox" style="display:none; margin:12px 0">
+        <div>내 이름을 골라요</div>
+        <div style="display:flex; gap:10px; margin-top:6px">
+          <select id="childSelect" style="flex:1"></select>
+          <button id="chooseBtn">선택 완료</button>
+        </div>
+      </div>
+
+      <div id="readyBox" style="display:none; margin-top:12px">
+        <div class="note" id="selInfo"></div>
+        <button id="start" style="margin-top:10px">촬영/저장 시작</button>
+      </div>
+    </section>
+  </div>
+
+<script>
+// ★ 새 Apps Script /exec (네가 준 주소)
+const SESSION_API = "https://script.google.com/macros/s/AKfycbz5pKtRtaS0TVlJT74yJ6a2lpCS_pc1N8E5PZ0k8tOjZsiHlyMUskzw66JXN80gaVN4Tg/exec";
+
+function jsonp(url, timeoutMs=10000){
+  return new Promise((resolve, reject)=>{
+    const cb='cb_'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+    let done=false, timer=null;
+    window[cb]=(data)=>{ if(done) return; done=true; cleanup(); resolve(data); };
+    function cleanup(){ try{delete window[cb];}catch(e){} if(s&&s.parentNode)s.parentNode.removeChild(s); if(timer)clearTimeout(timer); }
+    const s=document.createElement('script');
+    s.src=url+(url.includes('?')?'&':'?')+'callback='+cb;
+    s.onerror=()=>{ if(done) return; done=true; cleanup(); reject(new Error('JSONP failed')); };
+    document.body.appendChild(s);
+    timer=setTimeout(()=>{ if(done) return; done=true; cleanup(); reject(new Error('Timeout')); }, timeoutMs);
+  });
+}
+
+const qp=new URLSearchParams(location.search);
+const SID=qp.get('sid');
+const PROBLEM_ID=qp.get('problem')||'unknown_problem';
+document.getElementById('title').textContent='문제 · '+PROBLEM_ID;
+
+const info=document.getElementById('info');
+const chooseBox=document.getElementById('chooseBox');
+const childSel=document.getElementById('childSelect');
+const chooseBtn=document.getElementById('chooseBtn');
+const readyBox=document.getElementById('readyBox');
+const selInfo=document.getElementById('selInfo');
+
+let SCHOOL_ID='', CLASS_ID='', CHILD='', ROSTER=[];
+
+async function resolve(){
+  if(!SID){ info.textContent='세션이 없습니다. 홈에서 다시 시작해 주세요.'; return; }
+  try{
+    const qs=new URLSearchParams({action:'resolve', sid:SID}).toString();
+    const j=await jsonp(`${SESSION_API}?${qs}`);
+    if(!j.ok){ info.textContent='세션 만료/오류: 홈에서 세션을 다시 만드세요.'; return; }
+    SCHOOL_ID=j.schoolId||''; CLASS_ID=j.classId||''; CHILD=(j.child||'').trim();
+    ROSTER=Array.isArray(j.roster)?j.roster:[];
+
+    info.textContent=`기관: ${SCHOOL_ID} · 반: ${CLASS_ID} · 문제: ${PROBLEM_ID}`;
+    if(ROSTER.length>0){
+      childSel.innerHTML=ROSTER.map(n=>`<option value="${n}">${n}</option>`).join('');
+      if(CHILD && ROSTER.includes(CHILD)) childSel.value=CHILD;
+      chooseBox.style.display='block';
+    }else{
+      selInfo.textContent=`반: ${CLASS_ID} / 아동: ${CHILD||'(미선택)'} / 문제: ${PROBLEM_ID}`;
+      readyBox.style.display='block';
+    }
+  }catch(e){
+    info.textContent='네트워크 오류(JSONP): '+e.message;
+  }
+}
+resolve();
+
+chooseBtn.onclick=()=>{
+  CHILD=childSel.value||'';
+  selInfo.textContent=`반: ${CLASS_ID} / 아동: ${CHILD||'(미선택)'} / 문제: ${PROBLEM_ID}`;
+  chooseBox.style.display='none'; readyBox.style.display='block';
+};
+
+document.getElementById('start').onclick=()=>{
+  alert(`[샘플] 촬영/업로드 시작\n기관=${SCHOOL_ID}\n반=${CLASS_ID}\n아동=${CHILD}\n문제=${PROBLEM_ID}`);
+};
+</script>
+</body>
+</html>
