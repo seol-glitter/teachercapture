@@ -1,0 +1,151 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>촬영 · 불의 마법을 푸는 안전 열쇠</title>
+<style>
+:root{--bg-top:#cfe9fb;--bg-bottom:#fff;--ink:#0b2a4a;--accent:#0f2f57;--pill:#0d2744;--card:#f6fbff;--line:#d7e7f5}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);
+     background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom))}
+.wrap{max-width:750px;margin:0 auto;padding:18px 14px 80px}
+.banner{display:block;width:100%;max-width:700px;margin:0 auto}
+.sub{margin:12px auto 18px;display:inline-block;padding:10px 18px;border-radius:999px;background:var(--pill);color:#fff;font-weight:800}
+.box{background:var(--card);border:1px solid var(--line);border-radius:18px;padding:16px;box-shadow:0 8px 30px rgba(13,39,68,.06)}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+select,button,input[type=file]{width:100%;box-sizing:border-box;border-radius:12px;border:1px solid var(--line);padding:12px 14px;font-size:16px;background:#fff}
+button{background:var(--accent);color:#fff;font-weight:800;border:none;cursor:pointer}
+.note{font-size:12px;opacity:.75}
+.hide{display:none}
+.success{display:flex;flex-direction:column;align-items:center;text-align:center;margin:6px 0 12px}
+.success .tit{font-size:28px;font-weight:900;letter-spacing:.2px;margin-bottom:8px}
+@media (max-width:420px){ .success .tit{font-size:24px} }
+.keywrap{width:180px;max-width:48vw;aspect-ratio:460/928;margin:6px auto 2px;position:relative}
+.keywrap img{width:100%;height:auto;display:block;filter:drop-shadow(0 10px 18px rgba(0,0,0,.18))}
+@keyframes floaty{0%{transform:translateY(0)}50%{transform:translateY(-6px)}100%{transform:translateY(0)}}
+.keywrap img{animation:floaty 2.6s ease-in-out infinite}
+.success .subtit{font-size:18px;font-weight:800;margin-top:6px}
+</style>
+
+<body>
+  <div class="wrap">
+    <img class="banner" src="https://seol-glitter.github.io/teacherhome/banner.png" alt="">
+    <div class="sub" id="title">촬영</div>
+
+    <div class="box">
+      <!-- 공통 성공 피드백 -->
+      <div class="success" id="successBox">
+        <div class="tit">성공입니다!</div>
+        <div class="keywrap"><img id="keyImg" alt="안전 열쇠"></div>
+        <div class="subtit" id="successText">안전열쇠를 모았어요!</div>
+      </div>
+
+      <div id="info" class="note">준비 중…</div>
+
+      <!-- (선택) 이름 선택: tk 있고 로스터 있을 때만 -->
+      <div id="nameBox" class="hide" style="margin-top:10px">
+        <div class="note">내 이름을 고르면 교사가 확인하기 쉬워요. (선택)</div>
+        <div class="row" style="margin-top:6px">
+          <select id="childSelect"></select>
+        </div>
+      </div>
+
+      <!-- 업로드 폼: tk 있을 때만 -->
+      <form id="upForm" class="hide" method="post" target="hidden_iframe"
+            action="https://script.google.com/macros/s/AKfycbyAbSq8dFnO4PHnX71ni4LVG0zDZcYSBGl2AvrbMdFmBj9iLX-Q4Gl7I9t_wM1oVEGOiA/exec"
+            enctype="multipart/form-data" onsubmit="return onUpload()">
+        <input type="hidden" name="action"  value="upload">
+        <input type="hidden" name="key"     id="up_key">
+        <input type="hidden" name="problem" id="up_problem">
+        <input type="hidden" name="child"   id="up_child">
+        <input type="file"  id="photo" name="photo" accept="image/*" capture="user" style="margin-top:10px">
+        <button type="submit" id="submitBtn" style="margin-top:10px">사진 업로드</button>
+        <div class="note" id="upMsg" style="margin-top:6px"></div>
+      </form>
+      <iframe name="hidden_iframe" style="display:none"></iframe>
+
+      <!-- 비가입 학급 안내 -->
+      <div id="noTkBox" class="hide" style="margin-top:10px">
+        <div class="note">기록 기능은 교사용 가입(학급 생성) 후 사용 가능합니다. 지금은 학습 모드로 안내만 제공됩니다.</div>
+        <button id="closeBtn" style="margin-top:10px;background:#6b7b8c">닫기</button>
+      </div>
+
+      <div class="note" id="tip" style="margin-top:8px"></div>
+    </div>
+  </div>
+
+<script>
+// 새 EXEC URL
+const EXEC = "https://script.google.com/macros/s/AKfycbyAbSq8dFnO4PHnX71ni4LVG0zDZcYSBGl2AvrbMdFmBj9iLX-Q4Gl7I9t_wM1oVEGOiA/exec";
+// 열쇠 이미지 URL(교체 가능)
+const KEY_IMG_URL = "https://seol-glitter.github.io/teacherhome/assets/fire-key.png?v=20250909";
+</script>
+
+const qp  = new URLSearchParams(location.search);
+const TK  = qp.get('tk'); 
+const PROBLEM = qp.get('problem') || 'unknown_problem';
+const CHILD_URL = qp.get('child') || '';
+
+const $ = id => document.getElementById(id);
+
+// 성공 텍스트/이미지
+$('title').textContent = '촬영 · ' + PROBLEM;
+$('successText').textContent = `“${PROBLEM}” 안전열쇠를 모았어요!`;
+$('keyImg').src = KEY_IMG_URL;
+$('up_problem').value = PROBLEM;
+
+function jsonp(url,timeoutMs=10000){
+  return new Promise((resolve,reject)=>{
+    const cb='cb_'+Math.random().toString(36).slice(2)+Date.now().toString(36);
+    let done=false,t=null; window[cb]=(d)=>{if(done)return;done=true;cl();resolve(d)};
+    function cl(){try{delete window[cb]}catch(_){ } if(s&&s.parentNode)s.parentNode.removeChild(s); if(t)clearTimeout(t)}
+    const s=document.createElement('script'); s.src=url+(url.includes('?')?'&':'?')+'callback='+cb;
+    s.onerror=()=>{if(done)return;done=true;cl();reject(new Error('JSONP failed'))};
+    document.body.appendChild(s); t=setTimeout(()=>{if(done)return;done=true;cl();reject(new Error('Timeout'))},timeoutMs);
+  });
+}
+
+let ROSTER=[];
+
+async function bootstrap(){
+  if(!TK){
+    $('info').textContent='(가입 없음) 학습 모드';
+    document.getElementById('noTkBox').classList.remove('hide');
+    return; // 촬영 UI 숨김
+  }
+
+  $('info').textContent='기관/반 확인 중…';
+  try{
+    const j=await jsonp(`${EXEC}?`+new URLSearchParams({action:'resolveKey',key:TK}).toString());
+    if(j.ok && Array.isArray(j.roster) && j.roster.length){
+      ROSTER = j.roster;
+      document.getElementById('nameBox').classList.remove('hide');
+      const sel=document.getElementById('childSelect');
+      sel.innerHTML=ROSTER.map(n=>`<option value="${n}">${n}</option>`).join('');
+      // URL로 child가 넘어오면 자동 선택
+      if (CHILD_URL){ sel.value = CHILD_URL; document.getElementById('up_child').value = CHILD_URL; }
+    }
+    document.getElementById('up_key').value = TK;
+    document.getElementById('upForm').classList.remove('hide');
+    document.getElementById('tip').textContent='카메라가 자동으로 열리지 않으면, 아래 버튼을 한 번 눌러 주세요.';
+
+    // 성공 화면 1.2초 보여준 뒤 전면 카메라 자동 시도
+    setTimeout(()=>{ try{ document.getElementById('photo').click(); }catch(_){ } }, 1200);
+  }catch(e){
+    $('info').textContent='네트워크 오류: '+e.message;
+  }
+}
+bootstrap();
+
+document.getElementById('childSelect')?.addEventListener('change',()=>{
+  document.getElementById('up_child').value = document.getElementById('childSelect').value || '';
+});
+document.getElementById('closeBtn')?.addEventListener('click',()=>{ try{ window.close(); }catch(_){ } history.back(); });
+
+function onUpload(){ document.getElementById('upMsg').textContent='업로드 중…'; return true; }
+document.querySelector('iframe[name="hidden_iframe"]').addEventListener('load',()=>{
+  document.getElementById('upMsg').textContent='저장 완료! (대시보드에서 확인 가능)';
+});
+</script>
+</body>
+</html>
