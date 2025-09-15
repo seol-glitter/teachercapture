@@ -1,0 +1,178 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>캡쳐 · 불의 마법을 푸는 안전 열쇠</title>
+<style>
+:root{--ink:#eaf2ff;--accent:#22c55e} *{box-sizing:border-box}
+html,body{height:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:#000;color:#fff}
+.wrap{max-width:720px;margin:0 auto;padding:14px}
+h1{font-size:18px;margin:6px 0 10px}.note{font-size:12px;opacity:.9}
+.video{width:100%;aspect-ratio:3/4;background:#111;border-radius:12px;overflow:hidden}
+.row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:8px}
+.btn{flex:1;padding:12px 14px;border:0;border-radius:12px;background:var(--accent);color:#083016;font-weight:900;cursor:pointer}
+.btn.secondary{background:#334155;color:#fff}.hidden{display:none}
+.splash{display:flex;flex-direction:column;align-items:center;gap:10px;text-align:center;margin-top:14px}
+.splash h2{margin:6px 0 0;font-size:24px;color:#fff;text-shadow:0 2px 12px rgba(0,0,0,.6)}
+.key{width:min(260px,45vw);height:auto}
+</style>
+<body>
+<div class="wrap">
+  <h1 id="title">성공 화면</h1>
+  <div id="meta" class="note"></div>
+
+  <!-- 스플래시 -->
+  <div class="splash" id="splash">
+    <img id="keyImg" class="key" alt="안전 열쇠">
+    <h2>성공입니다!</h2>
+    <div id="guestHint" class="note"></div>
+    <div class="row" id="guestButtons" style="margin-top:6px">
+      <button class="btn secondary" id="btnClose">닫기</button>
+    </div>
+  </div>
+
+  <!-- 촬영 UI (가입 기기에서만 자동 진입) -->
+  <video id="v" class="video hidden" autoplay playsinline muted></video>
+  <div class="row hidden" id="btnRow">
+    <button id="snap" class="btn">촬영하기</button>
+    <button id="retake" class="btn secondary">다시 찍기</button>
+    <button id="upload" class="btn">업로드</button>
+  </div>
+  <div class="row hidden" id="optRow">
+    <label><input type="checkbox" id="localMatch" checked> 기기 내 자동분류 도움(저장 X)</label>
+  </div>
+  <div class="note" id="msg" style="margin-top:6px"></div>
+
+  <!-- 업로드 폼(숨김 iframe) -->
+  <form id="upForm" method="post" target="hidden_iframe" enctype="multipart/form-data" onsubmit="return onUpload()" class="hidden">
+    <input type="hidden" name="action"  value="uploadSuccess">
+    <input type="hidden" name="key"     id="f_key">
+    <input type="hidden" name="problem" id="f_problem">
+    <input type="hidden" name="child"   id="f_child">
+    <input type="hidden" name="ts"      id="f_ts">
+    <input type="hidden" name="embed_csv" id="f_embed">
+    <input type="file"   name="file"    id="f_file" accept="image/*" capture="user">
+  </form>
+  <iframe name="hidden_iframe" style="display:none"></iframe>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<script>
+// === 기기 초기화 쿼리 (?reset=1) ===
+const _q=new URLSearchParams(location.search);
+if(_q.get('reset')==='1'){
+  ['tk','mode','schoolId','classId','faceDB'].forEach(k=>localStorage.removeItem(k));
+  location.href = location.origin + location.pathname;
+}
+
+// ★ Apps Script EXEC
+const EXEC_B="https://script.google.com/macros/s/AKfycbzNUWjOhh3V-Cu2WYkl6voDKoAHFKjOl_OQbKH6rQYj6o8K06YoQmc0D7Q6WMJJ-Foz/exec";
+const EXEC_A="https://script.google.com/macros/s/AKfycby4camh7UDnlV4ElL3eJPUUWvslSAtfyssAQBRfizcY9D1MRJK9r_O0ZYDnQvKryalG/exec";
+const KEY_IMG_URL=""; // 비우면 아래 SVG 대체 이미지가 표시됨
+
+// 파라미터 & 로컬스토리지 폴백
+const qs=new URLSearchParams(location.search);
+const problem=(qs.get('problem')||'').trim();
+const tk=((qs.get('tk')||localStorage.getItem('tk')||'').trim());
+const MODE=((qs.get('mode')||localStorage.getItem('mode')||'b').trim().toLowerCase()==='a')?'a':'b';
+const EXEC=MODE==='a'?EXEC_A:EXEC_B;
+
+document.getElementById('keyImg').src = KEY_IMG_URL || 'data:image/svg+xml;utf8,'+encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 512"><defs><linearGradient id="g" x1="0" x2="0" y1="0" y2="1"><stop stop-color="#ffcc33"/><stop offset="1" stop-color="#ff8514"/></linearGradient></defs><path d="M128 0c40 30 64 63 64 102 0 31-16 55-43 73-9 6-11 19-4 28l10 13c29 36 29 75 1 112-22 29-57 45-95 45-29 0-52-9-61-14 42-18 69-46 80-85 5-18 5-37-2-56-5-14-3-30 7-41 17-20 26-38 26-57C111 74 116 48 128 0z" fill="#ff5a17"/><rect x="110" y="320" width="36" height="150" rx="8" fill="url(#g)"/><rect x="146" y="380" width="46" height="36" rx="5" fill="#111"/><rect x="146" y="430" width="46" height="36" rx="5" fill="#111"/></svg>`);
+
+const hasParams = !!(tk && problem);
+document.getElementById('meta').textContent = hasParams ? `모드: ${MODE.toUpperCase()} · 문제: ${problem} (곧 촬영으로 전환)` : `손님 모드(가입 없이 사용)`;
+document.getElementById('guestHint').textContent = hasParams ? '' : '사진 촬영은 가입 학급에서만 진행됩니다.';
+document.getElementById('btnClose').onclick=()=>{window.close();};
+if(hasParams){ setTimeout(startCameraFlow, 1600); } // 스플래시 → 1.6초 뒤 촬영
+
+// ===== 촬영/업로드 =====
+const v=$('v'), snap=$('snap'), retake=$('retake'), upload=$('upload'), msg=$('msg'), localMatch=$('localMatch');
+const btnRow=$('btnRow'), optRow=$('optRow'), splash=$('splash'), upForm=$('upForm');
+let stream=null, lastBlob=null, lastEmbed=null;
+function $(id){return document.getElementById(id)}
+function showCaptureUI(show){ if(show){ v.classList.remove('hidden'); btnRow.classList.remove('hidden'); optRow.classList.remove('hidden'); upForm.classList.remove('hidden'); splash.classList.add('hidden'); } else { v.classList.add('hidden'); btnRow.classList.add('hidden'); optRow.classList.add('hidden'); upForm.classList.add('hidden'); splash.classList.remove('hidden'); } }
+
+async function startCameraFlow(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+    v.srcObject=stream;
+    showCaptureUI(true);
+    snap.style.display='inline-block'; retake.style.display='none'; upload.style.display='none';
+  }catch(e){
+    msg.textContent='카메라 권한 필요: '+e.message;
+  }
+}
+
+// 촬영(폴백 포함)
+snap.onclick=async ()=>{
+  try{
+    const c=document.createElement('canvas'); const ctx=c.getContext('2d');
+    if('ImageCapture' in window && stream && stream.getVideoTracks && stream.getVideoTracks()[0]){
+      const cap=new ImageCapture(stream.getVideoTracks()[0]); const bitmap=await cap.grabFrame();
+      c.width=bitmap.width; c.height=bitmap.height; ctx.drawImage(bitmap,0,0);
+    }else{
+      c.width = v.videoWidth || 720; c.height = v.videoHeight || Math.round(c.width*4/3);
+      ctx.drawImage(v,0,0,c.width,c.height);
+    }
+    const blob = await new Promise(res=>c.toBlob(b=>res(b),'image/jpeg',0.9));
+    lastBlob=blob; lastEmbed=null;
+    $('f_file').files = await fileListFromBlob(lastBlob,'capture.jpg');
+    $('f_ts').value = Date.now();
+
+    // 임베딩(A모드 / B모드 로컬매칭용)
+    if((MODE==='a') || (MODE==='b' && localMatch.checked)){
+      try{
+        await ensureModels();
+        const det=await faceapi.detectSingleFace(c,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+        if(det && det.descriptor){ lastEmbed=det.descriptor; msg.textContent='임베딩 준비됨'; }
+      }catch(e){}
+    }
+
+    snap.style.display='none'; retake.style.display='inline-block'; upload.style.display='inline-block';
+    msg.textContent=(msg.textContent||'')+(msg.textContent?' ':'')+'촬영 완료. 업로드를 눌러 저장하세요.';
+  }catch(e){
+    msg.textContent='촬영 오류: '+e.message;
+  }
+};
+
+retake.onclick=()=>{ lastBlob=null; lastEmbed=null; snap.style.display='inline-block'; retake.style.display='none'; upload.style.display='none'; msg.textContent=''; };
+
+upload.onclick=()=>{
+  let childAlias='';
+  if(MODE==='b' && localMatch.checked && lastEmbed){ childAlias=localMatchOrCreateAlias(lastEmbed); }
+  $('f_key').value     = tk;
+  $('f_problem').value = problem;
+  $('f_child').value   = childAlias;
+  $('f_embed').value   = (MODE==='a' && lastEmbed) ? Array.from(lastEmbed).join(',') : '';
+  upForm.action        = (MODE==='a'?EXEC_A:EXEC_B);
+  upForm.submit();
+  msg.textContent='업로드 중… 완료 후 대시보드에서 확인하세요.';
+  setTimeout(()=>{ retake.click(); }, 1200);
+};
+
+function onUpload(){ return true; }
+async function fileListFromBlob(blob, filename){
+  const dt=new DataTransfer(); dt.items.add(new File([blob], filename, {type:blob.type})); return dt.files;
+}
+
+// face-api 로딩/로컬매칭
+let modelsReady=false;
+async function ensureModels(){ if(modelsReady)return; const base='https://cdn.jsdelivr.net/npm/face-api.js/weights/'; await faceapi.nets.tinyFaceDetector.loadFromUri(base); await faceapi.nets.faceLandmark68Net.loadFromUri(base); await faceapi.nets.faceRecognitionNet.loadFromUri(base); modelsReady=true; }
+function cosine(a,b){let dot=0,na=0,nb=0;for(let i=0;i<a.length;i++){dot+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i]}return dot/(Math.sqrt(na)*Math.sqrt(nb)+1e-9)}
+function getLocalDB(){ try{return JSON.parse(localStorage.getItem('faceDB')||'{}')}catch(_){return{}} }
+function setLocalDB(db){ localStorage.setItem('faceDB', JSON.stringify(db)) }
+function localMatchOrCreateAlias(embed){
+  let db=getLocalDB(); let bestId='',bestScore=-1;
+  Object.keys(db).forEach(id=>{const c=db[id]; const s=cosine(embed,new Float32Array(c.vec)); if(s>bestScore){bestScore=s;bestId=id;}});
+  if(bestScore>=0.83){
+    const c=db[bestId], alpha=0.85, v=new Float32Array(c.vec);
+    for(let i=0;i<embed.length;i++) v[i]=alpha*v[i]+(1-alpha)*embed[i];
+    db[bestId]={vec:Array.from(v),n:(c.n||1)+1}; setLocalDB(db); return bestId;
+  }
+  const alias='아이'+Math.random().toString(36).slice(2,6);
+  db[alias]={vec:Array.from(embed),n:1}; setLocalDB(db); return alias;
+}
+</script>
+</body>
+</html>
