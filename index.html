@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="ko">
+<meta charset="utf-8"/>
+<meta name="viewport" content="width=device-width, initial-scale=1"/>
+<title>캡쳐</title>
+<style>
+:root{ --bg-top:#cfe9fb; --bg-bottom:#ffffff; --ink:#0b2a4a; --line:#d7e7f5; }
+*{box-sizing:border-box} html,body{height:100%}
+body{margin:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:var(--ink);background:linear-gradient(180deg,var(--bg-top),var(--bg-bottom))}
+.wrap{max-width:780px;margin:0 auto;padding:16px 14px 28px}
+.closeBtn{position:fixed;right:14px;top:14px;z-index:10;padding:10px 14px;border:0;border-radius:999px;font-weight:900;background:#0d2744;color:#fff;box-shadow:0 10px 24px rgba(13,39,68,.25);cursor:pointer}
+.splash{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:calc(100dvh - 60px);text-align:center;gap:16px}
+.key{width:min(420px,38vw);height:auto;filter:drop-shadow(0 12px 30px rgba(0,0,0,.18))}
+h2.big{margin:6px 0 0;font-size:clamp(48px,10vw,120px);line-height:1.04;letter-spacing:-.02em;text-shadow:0 2px 12px rgba(255,255,255,.35)}
+.note{font-size:12px;opacity:.8}
+.video{width:100%;aspect-ratio:3/4;background:#000;border-radius:14px;overflow:hidden;border:1px solid var(--line);box-shadow:0 10px 26px rgba(13,39,68,.15)}
+.row{display:flex;gap:10px;align-items:center;flex-wrap:wrap;margin-top:10px}
+.btn{flex:1;padding:12px 14px;border:0;border-radius:12px;font-weight:900;cursor:pointer;background:#274766;color:#fff;box-shadow:0 6px 16px rgba(15,47,87,.18)}
+.btn.secondary{background:#6b7b8c}
+.hidden{display:none}
+.err{color:#b91c1c;font-weight:700}
+</style>
+<body>
+<button class="closeBtn" id="btnClose">닫기 ✕</button>
+<div class="wrap">
+
+  <!-- 스플래시 -->
+  <div class="splash" id="splash">
+    <img id="keyImg" class="key" src="./images/fire-key.png" alt="안전 열쇠">
+    <h2 class="big">성공입니다!</h2>
+    <div id="whyGuest" class="note"></div>
+  </div>
+
+  <!-- 촬영/업로드 (가입 기기만) -->
+  <video id="v" class="video hidden" autoplay playsinline muted></video>
+  <div class="row hidden" id="btnRow">
+    <button id="snap" class="btn">촬영하기</button>
+    <button id="retake" class="btn secondary">다시 찍기</button>
+    <button id="upload" class="btn">업로드</button>
+  </div>
+  <div class="row hidden" id="optRow">
+    <label class="note"><input type="checkbox" id="localMatch" checked> (B모드) 기기 내 임시매칭 도움</label>
+  </div>
+  <div class="note" id="msg" style="margin-top:6px"></div>
+
+  <!-- 업로드 폼 -->
+  <form id="upForm" method="post" target="hidden_iframe" enctype="multipart/form-data" onsubmit="return onUpload()" class="hidden">
+    <input type="hidden" name="action"  value="uploadSuccess">
+    <input type="hidden" name="key"     id="f_key">
+    <input type="hidden" name="problem" id="f_problem">
+    <input type="hidden" name="child"   id="f_child">
+    <input type="hidden" name="ts"      id="f_ts">
+    <input type="hidden" name="embed_csv" id="f_embed">
+    <input type="file"   name="file"    id="f_file" accept="image/*" capture="user">
+  </form>
+  <iframe name="hidden_iframe" style="display:none"></iframe>
+</div>
+
+<!-- face-api: A모드 또는 B모드(로컬보조) -->
+<script src="https://cdn.jsdelivr.net/npm/face-api.js"></script>
+<script>
+// === GAS URL & 모드 ===
+const EXEC_A = "https://script.google.com/macros/s/AKfycby4camh7UDnlV4ElL3eJPUUWvslSAtfyssAQBRfizcY9D1MRJK9r_O0ZYDnQvKryalG/exec";
+const EXEC_B = "https://script.google.com/macros/s/AKfycbzNUWjOhh3V-Cu2WYkl6voDKoAHFKjOl_OQbKH6rQYj6o8K06YoQmc0D7Q6WMJJ-Foz/exec";
+
+const qs=new URLSearchParams(location.search);
+const problem=(qs.get('problem')||'').trim();
+const mode=(qs.get('mode')||localStorage.getItem('mode')||'b').toLowerCase()==='a'?'a':'b';
+localStorage.setItem('mode', mode);
+const EXEC=(mode==='a')?EXEC_A:EXEC_B;
+
+const tk = ((qs.get('tk')||localStorage.getItem('tk')||'').trim());
+const whyGuest = document.getElementById('whyGuest');
+
+// 손님모드 사유를 친절히 안내
+function renderGuestReason(){
+  const reasons=[];
+  if(!tk) reasons.push('• 학급 연결 정보(tk)가 없습니다. (홈/대시보드에서 먼저 로그인)');
+  if(!problem) reasons.push('• URL에 <b>?problem=문항코드</b>가 필요합니다. (예: ?problem=P1)');
+  if(location.protocol!=='https:') reasons.push('• 보안 환경(HTTPS)에서만 카메라가 동작합니다.');
+  if(reasons.length){
+    whyGuest.innerHTML = '<span class="err">손님모드</span><br>'+reasons.join('<br>');
+  }else{
+    whyGuest.innerHTML='';
+  }
+}
+renderGuestReason();
+
+// 닫기
+document.getElementById('btnClose').onclick=()=>{ window.close(); history.back(); };
+
+// 조건 충족 시 1.4초 후 촬영 플로우 진입
+if(tk && problem){ setTimeout(startCameraFlow, 1400); }
+
+const v=$('v'), snap=$('snap'), retake=$('retake'), upload=$('upload'), msg=$('msg'), localMatch=$('localMatch');
+const btnRow=$('btnRow'), optRow=$('optRow'), splash=$('splash'), upForm=$('upForm');
+let stream=null, lastBlob=null, lastEmbed=null;
+function $(id){return document.getElementById(id)}
+function showCaptureUI(show){
+  if(show){ v.classList.remove('hidden'); btnRow.classList.remove('hidden'); optRow.classList.remove('hidden'); upForm.classList.remove('hidden'); splash.classList.add('hidden'); }
+}
+async function startCameraFlow(){
+  try{
+    stream=await navigator.mediaDevices.getUserMedia({video:{facingMode:'user'},audio:false});
+    v.srcObject=stream;
+    showCaptureUI(true);
+    snap.style.display='inline-block'; retake.style.display='none'; upload.style.display='none';
+  }catch(e){
+    msg.textContent='카메라 권한/환경 문제: '+e.message+' (HTTPS인지, 권한 허용했는지 확인)';
+  }
+}
+
+snap.onclick=async ()=>{
+  try{
+    const c=document.createElement('canvas'); const ctx=c.getContext('2d');
+    if('ImageCapture' in window && stream?.getVideoTracks?.()[0]){
+      const cap=new ImageCapture(stream.getVideoTracks()[0]); const bitmap=await cap.grabFrame();
+      c.width=bitmap.width; c.height=bitmap.height; ctx.drawImage(bitmap,0,0);
+    }else{
+      c.width = v.videoWidth || 720; c.height = v.videoHeight || Math.round(c.width*4/3);
+      ctx.drawImage(v,0,0,c.width,c.height);
+    }
+    const blob = await new Promise(res=>c.toBlob(b=>res(b),'image/jpeg',0.9));
+    lastBlob=blob; lastEmbed=null;
+    $('f_file').files = await fileListFromBlob(lastBlob,'capture.jpg');
+    $('f_ts').value = Date.now();
+
+    // A모드 or B모드 로컬보조: 임베딩
+    if((mode==='a') || (mode==='b' && localMatch.checked)){
+      try{
+        await ensureModels();
+        const det=await faceapi.detectSingleFace(c,new faceapi.TinyFaceDetectorOptions()).withFaceLandmarks().withFaceDescriptor();
+        if(det && det.descriptor){ lastEmbed=det.descriptor; }
+      }catch(_){}
+    }
+
+    snap.style.display='none'; retake.style.display='inline-block'; upload.style.display='inline-block';
+    msg.textContent='촬영 완료. 업로드를 눌러 저장하세요.';
+  }catch(e){ msg.textContent='촬영 오류: '+e.message; }
+};
+retake.onclick=()=>{ lastBlob=null; lastEmbed=null; snap.style.display='inline-block'; retake.style.display='none'; upload.style.display='none'; msg.textContent=''; };
+upload.onclick=()=>{
+  let childAlias='';
+  if(mode==='b' && localMatch.checked && lastEmbed){ childAlias=localMatchOrCreateAlias(lastEmbed); }
+  $('f_key').value     = tk;
+  $('f_problem').value = problem;
+  $('f_child').value   = childAlias;
+  $('f_embed').value   = (mode==='a' && lastEmbed) ? Array.from(lastEmbed).join(',') : '';
+  upForm.action        = (mode==='a'?EXEC_A:EXEC_B);
+  upForm.submit();
+  msg.textContent='업로드 중… 완료 후 대시보드에서 확인하세요.';
+  setTimeout(()=>{ retake.click(); }, 1200);
+};
+
+function onUpload(){ return true; }
+async function fileListFromBlob(blob, filename){
+  const dt=new DataTransfer(); dt.items.add(new File([blob], filename, {type:blob.type})); return dt.files;
+}
+
+// face-api
+let modelsReady=false;
+async function ensureModels(){
+  if(modelsReady) return;
+  const base='https://cdn.jsdelivr.net/npm/face-api.js/weights/';
+  await faceapi.nets.tinyFaceDetector.loadFromUri(base);
+  await faceapi.nets.faceLandmark68Net.loadFromUri(base);
+  await faceapi.nets.faceRecognitionNet.loadFromUri(base);
+  modelsReady=true;
+}
+function cosine(a,b){let d=0,na=0,nb=0;for(let i=0;i<a.length;i++){d+=a[i]*b[i];na+=a[i]*a[i];nb+=b[i]*b[i]}return d/(Math.sqrt(na)*Math.sqrt(nb)+1e-9)}
+function getLocalDB(){ try{return JSON.parse(localStorage.getItem('faceDB')||'{}')}catch(_){return{}} }
+function setLocalDB(db){ localStorage.setItem('faceDB', JSON.stringify(db)) }
+function localMatchOrCreateAlias(embed){
+  let db=getLocalDB(); let bestId='',bestScore=-1;
+  Object.keys(db).forEach(id=>{const c=db[id]; const s=cosine(embed,new Float32Array(c.vec)); if(s>bestScore){bestScore=s;bestId=id;}});
+  if(bestScore>=0.83){
+    const c=db[bestId], alpha=0.85, v=new Float32Array(c.vec);
+    for(let i=0;i<embed.length;i++) v[i]=alpha*v[i]+(1-alpha)*embed[i];
+    db[bestId]={vec:Array.from(v),n:(c.n||1)+1}; setLocalDB(db); return bestId;
+  }
+  const alias='아이'+Math.random().toString(36).slice(2,6);
+  db[alias]={vec:Array.from(embed),n:1}; setLocalDB(db); return alias;
+}
+</script>
+</body>
+</html>
